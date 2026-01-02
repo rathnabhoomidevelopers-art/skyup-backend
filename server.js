@@ -11,6 +11,7 @@ const corsOptions = {
   origin: "https://skyup-digital.vercel.app", // Replace with your actual frontend URL
   methods: ["GET", "POST"],  // Adjust as needed
   allowedHeaders: ["Content-Type"], // Adjust based on headers your API needs
+  preflightContinue: false,
 };
 
 app.use(cors(corsOptions));
