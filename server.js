@@ -9,15 +9,16 @@ const app = express();
 
 const corsOptions = {
   origin: [
-    "https://www.skyupdigitalsolutions.com/",
-    "https://skyupdigitalsolutions.com"
-  ], // Array of allowed origins
-  methods: ["GET", "POST"],  // Adjust as needed
-  allowedHeaders: ["Content-Type"], // Adjust based on headers your API needs
-  preflightContinue: false, 
+    "https://www.skyupdigitalsolutions.com",  // With "www"
+    "https://skyupdigitalsolutions.com",      // Without "www"
+  ], 
+  methods: ["GET", "POST"],  // Allow GET and POST methods
+  allowedHeaders: ["Content-Type"],  // Allow headers that are required
+  preflightContinue: false,  // Preflight continue
 };
 
 app.use(cors(corsOptions));
+
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
