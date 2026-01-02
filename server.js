@@ -6,7 +6,14 @@ const cloudinary = require("cloudinary").v2;
 const { MongoClient } = require("mongodb");
 
 const app = express();
-app.use(cors());
+
+const corsOptions = {
+  origin: "https://skyup-digital.vercel.app/", // Replace with your actual frontend URL
+  methods: ["GET", "POST"],  // Adjust as needed
+  allowedHeaders: ["Content-Type"], // Adjust based on headers your API needs
+};
+
+app.use(cors(corsOptions));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
