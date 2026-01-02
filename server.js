@@ -8,13 +8,17 @@ const { MongoClient } = require("mongodb");
 const app = express();
 
 const corsOptions = {
-  origin: "https://www.skyupdigitalsolutions.com/", // Replace with your actual frontend URL
+  origin: [
+    "https://www.skyupdigitalsolutions.com/",
+    "https://skyupdigitalsolutions.com"
+  ], // Array of allowed origins
   methods: ["GET", "POST"],  // Adjust as needed
   allowedHeaders: ["Content-Type"], // Adjust based on headers your API needs
-  preflightContinue: false,
+  preflightContinue: false, 
 };
 
 app.use(cors(corsOptions));
+
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
