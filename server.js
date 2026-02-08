@@ -4,6 +4,8 @@ const cors = require("cors");
 const multer = require("multer");
 const cloudinary = require("cloudinary").v2;
 const { MongoClient, ServerApiVersion } = require("mongodb");
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcryptjs");
 
 const app = express();
 
@@ -14,7 +16,7 @@ const corsOptions = {
     "http://localhost:3000",
   ], 
   methods: ["GET", "POST"],
-  allowedHeaders: ["Content-Type"],
+  allowedHeaders: ["Content-Type", "Authorization"], // Added Authorization
   credentials: true,
 };
 
@@ -69,6 +71,101 @@ async function connectToDatabase() {
   }
 }
 
+// ============================================
+// JWT AUTHENTICATION MIDDLEWARE
+// ============================================
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1]; // Bearer TOKEN
+
+  if (!token) {
+    return res.status(401).json({ message: "Access token required" });
+  }
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+    if (err) {
+      console.error("❌ Token verification failed:", err.message);
+      return res.status(403).json({ message: "Invalid or expired token" });
+    }
+    req.user = user;
+    next();
+  });
+};
+
+// ============================================
+// AUTHENTICATION ROUTES
+// ============================================
+
+// Login Route
+app.post("/api/auth/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ message: "Email and password are required" });
+    }
+
+    // Get admin credentials from environment variables
+    const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@skyupdigitalsolutions.com";
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
+
+    // Validate email
+    if (email !== ADMIN_EMAIL) {
+      console.log("❌ Invalid email attempt:", email);
+      return res.status(401).json({ message: "Invalid email or password" });
+    }
+
+    // Validate password
+    if (password !== ADMIN_PASSWORD) {
+      console.log("❌ Invalid password attempt for:", email);
+      return res.status(401).json({ message: "Invalid email or password" });
+    }
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { 
+        email: email,
+        role: "admin",
+        userId: "admin-1" 
+      },
+      process.env.JWT_SECRET || "skyup-default-secret-change-in-production",
+      { expiresIn: process.env.JWT_EXPIRES_IN || "24h" }
+    );
+
+    console.log("✅ Admin logged in successfully:", email);
+    
+    res.json({
+      success: true,
+      message: "Login successful",
+      token,
+      user: {
+        email: email,
+        role: "admin"
+      }
+    });
+  } catch (err) {
+    console.error("❌ Login error:", err);
+    res.status(500).json({ message: "Login failed", error: err.message });
+  }
+});
+
+// Verify Token Route
+app.get("/api/auth/verify", authenticateToken, (req, res) => {
+  res.json({ 
+    valid: true, 
+    user: req.user 
+  });
+});
+
+// Logout Route (optional - mainly handled client-side)
+app.post("/api/auth/logout", authenticateToken, (req, res) => {
+  console.log("✅ User logged out:", req.user.email);
+  res.json({ message: "Logged out successfully" });
+});
+
+// ============================================
+// CLOUDINARY CONFIGURATION
+// ============================================
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -102,6 +199,10 @@ function uploadToCloudinary(buffer, originalname) {
     stream.end(buffer);
   });
 }
+
+// ============================================
+// PUBLIC ROUTES (No Authentication Required)
+// ============================================
 
 app.post("/resume", upload.single("file"), async (req, res) => {
   try {
@@ -151,17 +252,6 @@ app.post("/add-users", async (req, res) => {
   }
 });
 
-app.get("/users", async (req, res) => {
-  try {
-    const document = await db.collection("jobs").find({}).toArray();
-    console.log(`✅ Fetched ${document.length} users`);
-    res.json(document);
-  } catch (err) {
-    console.error("❌ Get users error:", err);
-    res.status(500).json({ message: "Failed", error: err.message });
-  }
-});
-
 app.post("/add-contact", async (req, res) => {
   try {
     const users = {
@@ -182,10 +272,27 @@ app.post("/add-contact", async (req, res) => {
   }
 });
 
-app.get("/contacts", async (req, res) => {
+// ============================================
+// PROTECTED ROUTES (Authentication Required)
+// ============================================
+
+// Get all users (Protected)
+app.get("/users", authenticateToken, async (req, res) => {
+  try {
+    const document = await db.collection("jobs").find({}).toArray();
+    console.log(`✅ Fetched ${document.length} users by ${req.user.email}`);
+    res.json(document);
+  } catch (err) {
+    console.error("❌ Get users error:", err);
+    res.status(500).json({ message: "Failed", error: err.message });
+  }
+});
+
+// Get all contacts (Protected)
+app.get("/contacts", authenticateToken, async (req, res) => {
   try {
     const document = await db.collection("contact").find({}).toArray();
-    console.log(`✅ Fetched ${document.length} contacts`);
+    console.log(`✅ Fetched ${document.length} contacts by ${req.user.email}`);
     res.json(document);
   } catch (err) {
     console.error("❌ Get contacts error:", err);
@@ -193,8 +300,8 @@ app.get("/contacts", async (req, res) => {
   }
 });
 
-// Add API endpoint for last invoice
-app.get("/api/last-invoice", async (req, res) => {
+// Get last invoice number (Protected)
+app.get("/api/last-invoice", authenticateToken, async (req, res) => {
   try {
     const lastReceipt = await db
       .collection("receipt")
@@ -218,7 +325,8 @@ app.get("/api/last-invoice", async (req, res) => {
   }
 });
 
-app.post("/receipt", async (req, res) => {
+// Create receipt (Protected)
+app.post("/receipt", authenticateToken, async (req, res) => {
   try {
     const receiptsCollection = db.collection("receipt");
     const lastReceipt = await receiptsCollection.find().sort({ createdAt: -1 }).limit(1).toArray();
@@ -261,11 +369,12 @@ app.post("/receipt", async (req, res) => {
       cgst: parseInt(req.body.cgst || req.body.gst9),
       sgst: parseInt(req.body.sgst || req.body.Gst9),
       total: parseInt(req.body.total),
+      createdBy: req.user.email, // Track who created the receipt
       createdAt: new Date(),
     };
 
     await receiptsCollection.insertOne(clients);
-    console.log("✅ Receipt submitted successfully");
+    console.log(`✅ Receipt submitted successfully by ${req.user.email}`);
     res.json({ message: "Receipt submitted successfully", invoice_no: invoiceNumber });
   } catch (err) {
     console.error("❌ Receipt error:", err);
@@ -273,16 +382,21 @@ app.post("/receipt", async (req, res) => {
   }
 });
 
-app.get("/receipts", async (req, res) => {
+// Get all receipts (Protected)
+app.get("/receipts", authenticateToken, async (req, res) => {
   try {
     const document = await db.collection("receipt").find({}).toArray();
-    console.log(`✅ Fetched ${document.length} receipts`);
+    console.log(`✅ Fetched ${document.length} receipts by ${req.user.email}`);
     res.json(document);
   } catch (err) {
     console.error("❌ Get receipts error:", err);
     res.status(500).json({ message: "Failed", error: err.message });
   }
 });
+
+// ============================================
+// SERVER SETUP
+// ============================================
 
 // Mask password in logs
 const maskedUri = uri.replace(/:[^:@]+@/, ':****@');
@@ -304,7 +418,8 @@ process.on('SIGINT', async () => {
 connectToDatabase().then(() => {
   app.listen(3500, () => {
     console.log(`🚀 Server running at http://127.0.0.1:3500`);
-    console.log(`📡 Ready to accept requests!\n`);
+    console.log(`📡 Ready to accept requests!`);
+    console.log(`🔐 JWT Authentication enabled\n`);
   });
 }).catch((err) => {
   console.error("❌ Failed to start server:", err);
