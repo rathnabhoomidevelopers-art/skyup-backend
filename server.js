@@ -326,6 +326,7 @@ app.get("/api/last-invoice", authenticateToken, async (req, res) => {
 });
 
 // Create receipt (Protected)
+// Create receipt (Protected)
 app.post("/receipt", authenticateToken, async (req, res) => {
   try {
     const receiptsCollection = db.collection("receipt");
@@ -355,28 +356,35 @@ app.post("/receipt", authenticateToken, async (req, res) => {
     const paddedSerial = String(nextInvoiceSerial).padStart(3, '0');
     const invoiceNumber = `SDS/${paddedSerial}/${financialYear}`;
 
+    // ✅ Helper function to safely parse numbers
+    const safeParseNumber = (value, defaultValue = 0) => {
+      const parsed = Number(value);
+      return isNaN(parsed) ? defaultValue : parsed;
+    };
+
     const clients = {
       to: req.body.to,
       client_gst: req.body.client_gst || 'URD',
       invoice_no: invoiceNumber,
       date: new Date(req.body.date),
-      invoice_due: req.body.invoice_due || null,
+      invoice_due: req.body.invoice_due ? new Date(req.body.invoice_due) : null,
       hsn_no: req.body.hsn_no,
-      description: req.body.description,
-      qty: parseInt(req.body.qty),
-      rate: parseInt(req.body.rate),
-      amount: parseInt(req.body.amount),
+      items: req.body.items || [],
+      subtotal: safeParseNumber(req.body.subtotal, 0), // ✅ Changed
       amount_in_words: req.body.amount_in_words,
-      cgst: parseInt(req.body.cgst || req.body.gst9 || 0),
-      sgst: parseInt(req.body.sgst || req.body.Gst9 || 0),
-      igst: parseInt(req.body.igst || 0),
-      cgst_percentage: parseFloat(req.body.cgst_percentage || 0),
-      sgst_percentage: parseFloat(req.body.sgst_percentage || 0),
-      igst_percentage: parseFloat(req.body.igst_percentage || 0),
-      total: parseInt(req.body.total),
-      createdBy: req.user.email, // Track who created the receipt
+      cgst: safeParseNumber(req.body.cgst, 0), // ✅ Changed
+      sgst: safeParseNumber(req.body.sgst, 0), // ✅ Changed
+      igst: safeParseNumber(req.body.igst, 0), // ✅ Changed
+      cgst_percentage: safeParseNumber(req.body.cgst_percentage, 0), // ✅ Changed
+      sgst_percentage: safeParseNumber(req.body.sgst_percentage, 0), // ✅ Changed
+      igst_percentage: safeParseNumber(req.body.igst_percentage, 0), // ✅ Changed
+      total: safeParseNumber(req.body.total, 0), // ✅ Changed
+      createdBy: req.user.email,
       createdAt: new Date(),
     };
+
+    // ✅ Log the data being saved for debugging
+    console.log("📝 Receipt data to be saved:", JSON.stringify(clients, null, 2));
 
     await receiptsCollection.insertOne(clients);
     console.log(`✅ Receipt submitted successfully by ${req.user.email}`);
