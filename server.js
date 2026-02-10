@@ -357,6 +357,7 @@ app.post("/receipt", authenticateToken, async (req, res) => {
 
     const clients = {
       to: req.body.to,
+      client_gst: req.body.client_gst || 'URD',
       invoice_no: invoiceNumber,
       date: new Date(req.body.date),
       invoice_due: req.body.invoice_due || null,
@@ -366,8 +367,12 @@ app.post("/receipt", authenticateToken, async (req, res) => {
       rate: parseInt(req.body.rate),
       amount: parseInt(req.body.amount),
       amount_in_words: req.body.amount_in_words,
-      cgst: parseInt(req.body.cgst || req.body.gst9),
-      sgst: parseInt(req.body.sgst || req.body.Gst9),
+      cgst: parseInt(req.body.cgst || req.body.gst9 || 0),
+      sgst: parseInt(req.body.sgst || req.body.Gst9 || 0),
+      igst: parseInt(req.body.igst || 0),
+      cgst_percentage: parseFloat(req.body.cgst_percentage || 0),
+      sgst_percentage: parseFloat(req.body.sgst_percentage || 0),
+      igst_percentage: parseFloat(req.body.igst_percentage || 0),
       total: parseInt(req.body.total),
       createdBy: req.user.email, // Track who created the receipt
       createdAt: new Date(),
