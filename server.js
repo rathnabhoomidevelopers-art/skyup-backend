@@ -20,6 +20,17 @@ const corsOptions = {
   credentials: true,
 };
 
+//removed the thrailing slash
+
+app.use((req, res, next) => {
+  if (req.path !== "/" && req.path.endsWith("/")) {
+    const cleanPath = req.path.slice(0, -1);
+    const query = req.url.slice(req.path.length); // preserve ?query=string
+    return res.redirect(301, cleanPath + query);
+  }
+  next();
+});
+
 app.use(cors(corsOptions));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
