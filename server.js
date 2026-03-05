@@ -3,21 +3,24 @@ const express = require("express");
 const cors = require("cors");
 const multer = require("multer");
 const cloudinary = require("cloudinary").v2;
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 
 const app = express();
 
+// REPLACE your current corsOptions with this:
 const corsOptions = {
   origin: [
     "https://www.skyupdigitalsolutions.com",
     "https://skyupdigitalsolutions.com",
     "http://localhost:3000",
-  ], 
-  methods: ["GET", "POST"],
-  allowedHeaders: ["Content-Type", "Authorization"], // Added Authorization
+    "http://localhost:3001"
+  ],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
+  optionsSuccessStatus: 200,
 };
 
 //removed the thrailing slash
@@ -32,6 +35,7 @@ app.use((req, res, next) => {
 });
 
 app.use(cors(corsOptions));
+app.options("/{*path}", cors(corsOptions)); // ← ADD THIS LINE — handles preflight for all routes
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
@@ -47,7 +51,7 @@ const client = new MongoClient(uri, {
   serverSelectionTimeoutMS: 30000,
   connectTimeoutMS: 30000,
   socketTimeoutMS: 45000,
-  family: 4, // Force IPv4 to help with DNS issues
+  // family: 4, // Force IPv4 to help with DNS issues
   retryWrites: true,
   retryReads: true,
   maxPoolSize: 10,
@@ -335,6 +339,71 @@ app.get("/api/last-invoice", authenticateToken, async (req, res) => {
     res.status(500).json({ lastSerial: 0, error: err.message });
   }
 });
+// Update receipt (Protected)
+app.put("/receipt/:id", authenticateToken, async (req, res) => {
+  try {
+    const receiptsCollection = db.collection("receipt");
+
+    const safeParseNumber = (value, defaultValue = 0) => {
+      const parsed = Number(value);
+      return isNaN(parsed) ? defaultValue : parsed;
+    };
+
+    const updatedFields = {
+      to: req.body.to,
+      client_gst: req.body.client_gst || "URD",
+      date: new Date(req.body.date),
+      invoice_due: req.body.invoice_due ? new Date(req.body.invoice_due) : null,
+      hsn_no: req.body.hsn_no || "",
+      items: req.body.items || [],
+      subtotal: safeParseNumber(req.body.subtotal),
+      amount_in_words: req.body.amount_in_words,
+      cgst: safeParseNumber(req.body.cgst),
+      sgst: safeParseNumber(req.body.sgst),
+      igst: safeParseNumber(req.body.igst),
+      cgst_percentage: safeParseNumber(req.body.cgst_percentage),
+      sgst_percentage: safeParseNumber(req.body.sgst_percentage),
+      igst_percentage: safeParseNumber(req.body.igst_percentage),
+      total: safeParseNumber(req.body.total),
+      updatedBy: req.user.email,
+      updatedAt: new Date(),
+    };
+
+    const result = await receiptsCollection.updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: updatedFields }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ message: "Receipt not found" });
+    }
+
+    console.log(`✅ Receipt ${req.params.id} updated by ${req.user.email}`);
+    res.json({ message: "Receipt updated successfully" });
+  } catch (err) {
+    console.error("❌ Update receipt error:", err);
+    res.status(500).json({ message: "Failed to update receipt", error: err.message });
+  }
+});
+
+// Delete receipt (Protected)
+app.delete("/receipt/:id", authenticateToken, async (req, res) => {
+  try {
+    const result = await db.collection("receipt").deleteOne({
+      _id: new ObjectId(req.params.id),
+    });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ message: "Receipt not found" });
+    }
+
+    console.log(`✅ Receipt ${req.params.id} deleted by ${req.user.email}`);
+    res.json({ message: "Receipt deleted successfully" });
+  } catch (err) {
+    console.error("❌ Delete receipt error:", err);
+    res.status(500).json({ message: "Failed to delete receipt", error: err.message });
+  }
+});
 
 // Create receipt (Protected)
 // Create receipt (Protected)
@@ -437,11 +506,11 @@ process.on('SIGINT', async () => {
     process.exit(1);
   }
 });
+const PORT = process.env.PORT || 3500;
 
-// Start server only after successful DB connection
 connectToDatabase().then(() => {
-  app.listen(3500, () => {
-    console.log(`🚀 Server running at http://127.0.0.1:3500`);
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
     console.log(`📡 Ready to accept requests!`);
     console.log(`🔐 JWT Authentication enabled\n`);
   });
@@ -449,3 +518,5 @@ connectToDatabase().then(() => {
   console.error("❌ Failed to start server:", err);
   process.exit(1);
 });
+
+module.exports = app;
