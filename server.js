@@ -1,4 +1,5 @@
 require("dotenv").config();
+const { Octokit } = require("@octokit/rest");
 const express = require("express");
 const cors = require("cors");
 const multer = require("multer");
@@ -15,7 +16,7 @@ const corsOptions = {
     "https://www.skyupdigitalsolutions.com",
     "https://skyupdigitalsolutions.com",
     "http://localhost:3000",
-    "http://localhost:3001"
+    "http://localhost:3001",
   ],
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
@@ -36,8 +37,8 @@ app.use((req, res, next) => {
 
 app.use(cors(corsOptions));
 app.options("/{*path}", cors(corsOptions)); // ← ADD THIS LINE — handles preflight for all routes
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+app.use(express.urlencoded({ limit: "10mb", extended: true }));
+app.use(express.json({ limit: "10mb" }));
 
 const uri = process.env.MONGO_URI || "mongodb://127.0.0.1:27017";
 
@@ -66,15 +67,14 @@ async function connectToDatabase() {
   try {
     console.log("🔄 Attempting to connect to MongoDB Atlas...");
     await client.connect();
-    
+
     // Ping to confirm connection
     await client.db("admin").command({ ping: 1 });
     console.log("✅ Successfully connected to MongoDB!");
-    
+
     // Set database
     db = client.db("skyup");
     console.log("✅ Database 'skyup' is ready!");
-    
   } catch (error) {
     console.error("❌ MongoDB connection failed:", error.message);
     console.error("\n🔧 Quick Fixes:");
@@ -117,11 +117,14 @@ app.post("/api/auth/login", async (req, res) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ message: "Email and password are required" });
+      return res
+        .status(400)
+        .json({ message: "Email and password are required" });
     }
 
     // Get admin credentials from environment variables
-    const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@skyupdigitalsolutions.com";
+    const ADMIN_EMAIL =
+      process.env.ADMIN_EMAIL || "admin@skyupdigitalsolutions.com";
     const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
 
     // Validate email
@@ -138,25 +141,25 @@ app.post("/api/auth/login", async (req, res) => {
 
     // Generate JWT token
     const token = jwt.sign(
-      { 
+      {
         email: email,
         role: "admin",
-        userId: "admin-1" 
+        userId: "admin-1",
       },
       process.env.JWT_SECRET || "skyup-default-secret-change-in-production",
-      { expiresIn: process.env.JWT_EXPIRES_IN || "24h" }
+      { expiresIn: process.env.JWT_EXPIRES_IN || "24h" },
     );
 
     console.log("✅ Admin logged in successfully:", email);
-    
+
     res.json({
       success: true,
       message: "Login successful",
       token,
       user: {
         email: email,
-        role: "admin"
-      }
+        role: "admin",
+      },
     });
   } catch (err) {
     console.error("❌ Login error:", err);
@@ -166,9 +169,9 @@ app.post("/api/auth/login", async (req, res) => {
 
 // Verify Token Route
 app.get("/api/auth/verify", authenticateToken, (req, res) => {
-  res.json({ 
-    valid: true, 
-    user: req.user 
+  res.json({
+    valid: true,
+    user: req.user,
   });
 });
 
@@ -209,7 +212,7 @@ function uploadToCloudinary(buffer, originalname) {
       (error, result) => {
         if (error) reject(error);
         else resolve(result);
-      }
+      },
     );
     stream.end(buffer);
   });
@@ -222,7 +225,10 @@ function uploadToCloudinary(buffer, originalname) {
 app.post("/resume", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: "No file uploaded" });
-    const result = await uploadToCloudinary(req.file.buffer, req.file.originalname);
+    const result = await uploadToCloudinary(
+      req.file.buffer,
+      req.file.originalname,
+    );
     return res.json({
       message: "Uploaded successfully",
       url: result.secure_url,
@@ -234,7 +240,9 @@ app.post("/resume", upload.single("file"), async (req, res) => {
     });
   } catch (err) {
     console.error("Resume upload error:", err);
-    return res.status(500).json({ message: "Upload failed", error: err.message });
+    return res
+      .status(500)
+      .json({ message: "Upload failed", error: err.message });
   }
 });
 
@@ -324,12 +332,12 @@ app.get("/api/last-invoice", authenticateToken, async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(1)
       .toArray();
-    
+
     if (lastReceipt.length > 0 && lastReceipt[0].invoice_no) {
       const invoiceNo = lastReceipt[0].invoice_no;
-      const parts = invoiceNo.split('/');
+      const parts = invoiceNo.split("/");
       const serial = parseInt(parts[1], 10);
-      
+
       res.json({ lastSerial: serial });
     } else {
       res.json({ lastSerial: 0 });
@@ -371,7 +379,7 @@ app.put("/receipt/:id", authenticateToken, async (req, res) => {
 
     const result = await receiptsCollection.updateOne(
       { _id: new ObjectId(req.params.id) },
-      { $set: updatedFields }
+      { $set: updatedFields },
     );
 
     if (result.matchedCount === 0) {
@@ -382,7 +390,9 @@ app.put("/receipt/:id", authenticateToken, async (req, res) => {
     res.json({ message: "Receipt updated successfully" });
   } catch (err) {
     console.error("❌ Update receipt error:", err);
-    res.status(500).json({ message: "Failed to update receipt", error: err.message });
+    res
+      .status(500)
+      .json({ message: "Failed to update receipt", error: err.message });
   }
 });
 
@@ -401,7 +411,9 @@ app.delete("/receipt/:id", authenticateToken, async (req, res) => {
     res.json({ message: "Receipt deleted successfully" });
   } catch (err) {
     console.error("❌ Delete receipt error:", err);
-    res.status(500).json({ message: "Failed to delete receipt", error: err.message });
+    res
+      .status(500)
+      .json({ message: "Failed to delete receipt", error: err.message });
   }
 });
 
@@ -410,13 +422,17 @@ app.delete("/receipt/:id", authenticateToken, async (req, res) => {
 app.post("/receipt", authenticateToken, async (req, res) => {
   try {
     const receiptsCollection = db.collection("receipt");
-    const lastReceipt = await receiptsCollection.find().sort({ createdAt: -1 }).limit(1).toArray();
-    
+    const lastReceipt = await receiptsCollection
+      .find()
+      .sort({ createdAt: -1 })
+      .limit(1)
+      .toArray();
+
     let nextInvoiceSerial = 1;
 
     if (lastReceipt.length > 0) {
       const lastInvoice = lastReceipt[0].invoice_no;
-      const invoiceParts = lastInvoice.split('/');
+      const invoiceParts = lastInvoice.split("/");
       nextInvoiceSerial = parseInt(invoiceParts[1], 10) + 1;
     }
 
@@ -433,7 +449,7 @@ app.post("/receipt", authenticateToken, async (req, res) => {
     };
 
     const financialYear = getCurrentFinancialYear();
-    const paddedSerial = String(nextInvoiceSerial).padStart(3, '0');
+    const paddedSerial = String(nextInvoiceSerial).padStart(3, "0");
     const invoiceNumber = `SDS/${paddedSerial}/${financialYear}`;
 
     // ✅ Helper function to safely parse numbers
@@ -444,7 +460,7 @@ app.post("/receipt", authenticateToken, async (req, res) => {
 
     const clients = {
       to: req.body.to,
-      client_gst: req.body.client_gst || 'URD',
+      client_gst: req.body.client_gst || "URD",
       invoice_no: invoiceNumber,
       date: new Date(req.body.date),
       invoice_due: req.body.invoice_due ? new Date(req.body.invoice_due) : null,
@@ -464,11 +480,17 @@ app.post("/receipt", authenticateToken, async (req, res) => {
     };
 
     // ✅ Log the data being saved for debugging
-    console.log("📝 Receipt data to be saved:", JSON.stringify(clients, null, 2));
+    console.log(
+      "📝 Receipt data to be saved:",
+      JSON.stringify(clients, null, 2),
+    );
 
     await receiptsCollection.insertOne(clients);
     console.log(`✅ Receipt submitted successfully by ${req.user.email}`);
-    res.json({ message: "Receipt submitted successfully", invoice_no: invoiceNumber });
+    res.json({
+      message: "Receipt submitted successfully",
+      invoice_no: invoiceNumber,
+    });
   } catch (err) {
     console.error("❌ Receipt error:", err);
     res.status(500).json({ message: "Failed", error: err.message });
@@ -487,36 +509,165 @@ app.get("/receipts", authenticateToken, async (req, res) => {
   }
 });
 
-// ============================================
-// SERVER SETUP
-// ============================================
+// Upload blog image to Cloudinary
+app.post("/api/upload-blog-image", authenticateToken, async (req, res) => {
+  try {
+    const { imageBase64 } = req.body;
+    if (!imageBase64)
+      return res.status(400).json({ error: "No image provided" });
+
+    // ✅ Reject images over 8MB
+    const sizeInMB = (imageBase64.length * 0.75) / 1024 / 1024;
+    if (sizeInMB > 8) {
+      return res.status(400).json({
+        error: `Image too large (${sizeInMB.toFixed(1)}MB). Please use an image under 8MB.`,
+      });
+    }
+
+    const result = await cloudinary.uploader.upload(imageBase64, {
+      folder: "skyup/blogs",
+      resource_type: "image",
+    });
+
+    console.log(`✅ Blog image uploaded to Cloudinary: ${result.secure_url}`);
+    res.json({ url: result.secure_url });
+  } catch (err) {
+    console.error("❌ Blog image upload error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/publish-blog", authenticateToken, async (req, res) => {
+  try {
+    const { blogData } = req.body;
+
+    if (!blogData || !blogData.slug) {
+      return res
+        .status(400)
+        .json({ error: "Invalid blog data — slug is required." });
+    }
+
+    const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+
+    const owner = process.env.GITHUB_OWNER;
+    const repo = process.env.GITHUB_REPO;
+    const branch = process.env.GITHUB_BRANCH || "main";
+    const path = process.env.BLOGS_FILE_PATH || "src/data/blogs.js";
+
+    // 1. Fetch current blogs.js from GitHub
+    let currentContent = "";
+    let fileSha = null;
+
+    try {
+      const { data } = await octokit.repos.getContent({
+        owner,
+        repo,
+        path,
+        ref: branch,
+      });
+      currentContent = Buffer.from(data.content, "base64").toString("utf8");
+      fileSha = data.sha;
+    } catch (e) {
+      if (e.status !== 404) throw e;
+      currentContent = "export const BLOGS = [];\n";
+    }
+
+    // 2. Parse existing BLOGS array
+    const match = currentContent.match(
+      /export\s+const\s+BLOGS\s*=\s*(\[[\s\S]*\]);/,
+    );
+    let blogs = [];
+
+    if (match) {
+      try {
+        blogs = new Function(`return ${match[1]}`)();
+      } catch {
+        return res
+          .status(500)
+          .json({
+            error: "Could not parse existing blogs.js — check file syntax.",
+          });
+      }
+    }
+
+    // 3. Insert or update blog
+    const existingIndex = blogs.findIndex((b) => b.slug === blogData.slug);
+    const newBlog = {
+      ...blogData,
+      id: existingIndex >= 0 ? blogs[existingIndex].id : Date.now(),
+    };
+
+    if (existingIndex >= 0) {
+      blogs[existingIndex] = newBlog;
+      console.log(`✅ Updated existing blog: ${blogData.slug}`);
+    } else {
+      blogs.unshift(newBlog);
+      console.log(`✅ Added new blog: ${blogData.slug}`);
+    }
+
+    // 4. Serialize back to JS module
+    const newContent = `export const BLOGS = ${JSON.stringify(blogs, null, 2)};\n`;
+
+    // 5. Commit and push to GitHub
+    const commitPayload = {
+      owner,
+      repo,
+      path,
+      branch,
+      message: `blog: ${existingIndex >= 0 ? "update" : "add"} "${blogData.headline || blogData.slug}"`,
+      content: Buffer.from(newContent).toString("base64"),
+      committer: {
+        name: "Blog Builder Bot",
+        email: "bot@skyupdigital.com",
+      },
+    };
+
+    if (fileSha) commitPayload.sha = fileSha;
+
+    await octokit.repos.createOrUpdateFileContents(commitPayload);
+
+    console.log(
+      `✅ Blog "${blogData.slug}" pushed to GitHub by ${req.user.email}`,
+    );
+
+    res.json({
+      message: `✅ Blog "${blogData.headline}" published and pushed to GitHub!`,
+      slug: blogData.slug,
+    });
+  } catch (err) {
+    console.error("❌ Publish error:", err);
+    res.status(500).json({ error: err.message || "Failed to publish blog" });
+  }
+});
 
 // Mask password in logs
-const maskedUri = uri.replace(/:[^:@]+@/, ':****@');
+const maskedUri = uri.replace(/:[^:@]+@/, ":****@");
 console.log("🔗 MongoDB URI:", maskedUri);
 
 // Graceful shutdown
-process.on('SIGINT', async () => {
+process.on("SIGINT", async () => {
   try {
     await client.close();
-    console.log('\n✅ MongoDB connection closed');
+    console.log("\n✅ MongoDB connection closed");
     process.exit(0);
   } catch (err) {
-    console.error('❌ Error during shutdown:', err);
+    console.error("❌ Error during shutdown:", err);
     process.exit(1);
   }
 });
 const PORT = process.env.PORT || 3500;
 
-connectToDatabase().then(() => {
-  app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-    console.log(`📡 Ready to accept requests!`);
-    console.log(`🔐 JWT Authentication enabled\n`);
+connectToDatabase()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`📡 Ready to accept requests!`);
+      console.log(`🔐 JWT Authentication enabled\n`);
+    });
+  })
+  .catch((err) => {
+    console.error("❌ Failed to start server:", err);
+    process.exit(1);
   });
-}).catch((err) => {
-  console.error("❌ Failed to start server:", err);
-  process.exit(1);
-});
 
 module.exports = app;
