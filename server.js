@@ -123,29 +123,24 @@ app.post("/api/auth/login", async (req, res) => {
     }
 
     // Get admin credentials from environment variables
-    const ADMIN_EMAIL =
-      process.env.ADMIN_EMAIL || "admin@skyupdigitalsolutions.com";
-    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
+    const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+    const BLOGGER_EMAIL = process.env.BLOGGER_EMAIL;
+    const BLOGGER_PASSWORD = process.env.BLOGGER_PASSWORD;
 
-    // Validate email
-    if (email !== ADMIN_EMAIL) {
-      console.log("❌ Invalid email attempt:", email);
+    let role = null;
+
+    if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
+      role = "admin";
+    } else if (email === BLOGGER_EMAIL && password === BLOGGER_PASSWORD) {
+      role = "blogger";
+    } else {
+      console.log("❌ Invalid login attempt:", email);
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    // Validate password
-    if (password !== ADMIN_PASSWORD) {
-      console.log("❌ Invalid password attempt for:", email);
-      return res.status(401).json({ message: "Invalid email or password" });
-    }
-
-    // Generate JWT token
     const token = jwt.sign(
-      {
-        email: email,
-        role: "admin",
-        userId: "admin-1",
-      },
+      { email, role, userId: role === "admin" ? "admin-1" : "blogger-1" },
       process.env.JWT_SECRET || "skyup-default-secret-change-in-production",
       { expiresIn: process.env.JWT_EXPIRES_IN || "24h" },
     );
@@ -582,11 +577,9 @@ app.post("/api/publish-blog", authenticateToken, async (req, res) => {
       try {
         blogs = new Function(`return ${match[1]}`)();
       } catch {
-        return res
-          .status(500)
-          .json({
-            error: "Could not parse existing blogs.js — check file syntax.",
-          });
+        return res.status(500).json({
+          error: "Could not parse existing blogs.js — check file syntax.",
+        });
       }
     }
 
