@@ -24,7 +24,13 @@ const corsOptions = {
   optionsSuccessStatus: 200,
 };
 
+app.options('*', cors(corsOptions))
+
 //removed the thrailing slash
+
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok' })
+})
 
 app.use((req, res, next) => {
   if (req.path !== "/" && req.path.endsWith("/")) {
@@ -35,8 +41,7 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(cors(corsOptions));
-app.options("/{*path}", cors(corsOptions)); // ← ADD THIS LINE — handles preflight for all routes
+app.use(cors(corsOptions));// ← ADD THIS LINE — handles preflight for all routes
 app.use(express.urlencoded({ limit: "10mb", extended: true }));
 app.use(express.json({ limit: "10mb" }));
 
@@ -153,7 +158,7 @@ app.post("/api/auth/login", async (req, res) => {
       token,
       user: {
         email: email,
-        role: "admin",
+        role: role,
       },
     });
   } catch (err) {
