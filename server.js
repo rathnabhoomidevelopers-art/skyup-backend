@@ -24,8 +24,6 @@ const corsOptions = {
   optionsSuccessStatus: 200,
 };
 
-app.options('/(.*)', cors(corsOptions))
-
 //removed the thrailing slash
 
 app.get('/api/health', (req, res) => {
