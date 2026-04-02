@@ -324,22 +324,32 @@ app.get("/contacts", authenticateToken, async (req, res) => {
 // Get last invoice number (Protected)
 app.get("/api/last-invoice", authenticateToken, async (req, res) => {
   try {
-    const lastReceipt = await db
+    const getCurrentFinancialYear = () => {
+      const today = new Date();
+      const y = today.getFullYear();
+      const m = today.getMonth() + 1;
+      return m >= 4
+        ? `${y}-${(y + 1).toString().slice(-2)}`
+        : `${y - 1}-${y.toString().slice(-2)}`;
+    };
+    const currentFY = getCurrentFinancialYear();
+
+    // Only look at receipts from the current financial year
+    const currentYearReceipts = await db
       .collection("receipt")
-      .find()
-      .sort({ createdAt: -1 })
-      .limit(1)
+      .find({ invoice_no: { $regex: currentFY } })
       .toArray();
 
-    if (lastReceipt.length > 0 && lastReceipt[0].invoice_no) {
-      const invoiceNo = lastReceipt[0].invoice_no;
-      const parts = invoiceNo.split("/");
-      const serial = parseInt(parts[1], 10);
-
-      res.json({ lastSerial: serial });
-    } else {
-      res.json({ lastSerial: 0 });
+    if (currentYearReceipts.length === 0) {
+      return res.json({ lastSerial: 0 });
     }
+
+    const serials = currentYearReceipts.map(r => {
+      const match = r.invoice_no?.match(/SDS\/(\d+)\//);
+      return match ? parseInt(match[1], 10) : 0;
+    });
+
+    res.json({ lastSerial: Math.max(...serials) });
   } catch (err) {
     console.error("❌ Error fetching last invoice:", err);
     res.status(500).json({ lastSerial: 0, error: err.message });
@@ -416,37 +426,36 @@ app.delete("/receipt/:id", authenticateToken, async (req, res) => {
 });
 
 // Create receipt (Protected)
-// Create receipt (Protected)
 app.post("/receipt", authenticateToken, async (req, res) => {
   try {
     const receiptsCollection = db.collection("receipt");
-    const lastReceipt = await receiptsCollection
-      .find()
-      .sort({ createdAt: -1 })
-      .limit(1)
+
+    const getCurrentFinancialYear = () => {
+      const today = new Date();
+      const y = today.getFullYear();
+      const m = today.getMonth() + 1;
+      return m >= 4
+        ? `${y}-${(y + 1).toString().slice(-2)}`
+        : `${y - 1}-${y.toString().slice(-2)}`;
+    };
+
+    const financialYear = getCurrentFinancialYear();
+
+    // Only look at receipts from the CURRENT financial year
+    const currentYearReceipts = await receiptsCollection
+      .find({ invoice_no: { $regex: financialYear } })
       .toArray();
 
     let nextInvoiceSerial = 1;
 
-    if (lastReceipt.length > 0) {
-      const lastInvoice = lastReceipt[0].invoice_no;
-      const invoiceParts = lastInvoice.split("/");
-      nextInvoiceSerial = parseInt(invoiceParts[1], 10) + 1;
+    if (currentYearReceipts.length > 0) {
+      const serials = currentYearReceipts.map(r => {
+        const match = r.invoice_no?.match(/SDS\/(\d+)\//);
+        return match ? parseInt(match[1], 10) : 0;
+      });
+      nextInvoiceSerial = Math.max(...serials) + 1;
     }
 
-    const getCurrentFinancialYear = () => {
-      const today = new Date();
-      const currentYear = today.getFullYear();
-      const currentMonth = today.getMonth() + 1;
-
-      if (currentMonth >= 4) {
-        return `${currentYear}-${(currentYear + 1).toString().slice(-2)}`;
-      } else {
-        return `${currentYear - 1}-${currentYear.toString().slice(-2)}`;
-      }
-    };
-
-    const financialYear = getCurrentFinancialYear();
     const paddedSerial = String(nextInvoiceSerial).padStart(3, "0");
     const invoiceNumber = `SDS/${paddedSerial}/${financialYear}`;
 
