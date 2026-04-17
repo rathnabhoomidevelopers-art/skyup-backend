@@ -286,6 +286,29 @@ app.post("/add-contact", async (req, res) => {
 
     await db.collection("contact").insertOne(users);
     console.log("✅ Contact submitted successfully");
+
+    // Forward lead to Pabbly webhook
+    const PABBLY_WEBHOOK_URL =
+      "https://connect.pabbly.com/webhook-listener/webhook/IjU3NjIwNTY1MDYzMTA0MzI1MjZmNTUzMCI_3D_pc/IjU3NjcwNTZlMDYzNjA0MzE1MjY0NTUzNTUxMzAi_pc";
+
+    fetch(PABBLY_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: req.body.name,
+        email: req.body.email,
+        mobile: req.body.mobile,
+        subject: req.body.subject,
+        message: req.body.message,
+      }),
+    })
+      .then((webhookRes) => {
+        console.log("✅ Lead forwarded to Pabbly webhook, status:", webhookRes.status);
+      })
+      .catch((webhookErr) => {
+        console.error("⚠️ Pabbly webhook error (non-blocking):", webhookErr.message);
+      });
+
     res.json({ message: "Submitted successfully" });
   } catch (err) {
     console.error("❌ Add contact error:", err);
