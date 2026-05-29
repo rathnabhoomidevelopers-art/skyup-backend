@@ -8,29 +8,38 @@ const client = new MongoClient(uri, {
     strict: true,
     deprecationErrors: true,
   },
-  serverSelectionTimeoutMS: 30000,
-  connectTimeoutMS: 30000,
-  socketTimeoutMS: 45000,
+  // Fail fast instead of hanging 30s on a bad/blocked connection
+  serverSelectionTimeoutMS: 8000,
+  connectTimeoutMS: 10000,
+  socketTimeoutMS: 20000,
   retryWrites: true,
   retryReads: true,
   maxPoolSize: 10,
-  minPoolSize: 2,
+  minPoolSize: 0, // serverless: don't pre-open connections on cold start
 });
 
 let db;
+let connectPromise = null; // cache the in-flight/established connection
 
-async function connectToDatabase() {
-  try {
-    console.log("🔄 Attempting to connect to MongoDB...");
-    await client.connect();
-    await client.db("admin").command({ ping: 1 });
-    console.log("✅ Successfully connected to MongoDB!");
+// Idempotent: returns the SAME promise on warm invocations, so we connect once.
+function connectToDatabase() {
+  if (db) return Promise.resolve(db);
+  if (connectPromise) return connectPromise;
+
+  connectPromise = (async () => {
+    console.log("🔄 Connecting to MongoDB...");
+    await client.connect(); // no extra admin ping on the hot path
     db = client.db("skyup");
-    console.log("✅ Database 'skyup' is ready!");
-  } catch (error) {
+    console.log("✅ MongoDB connected, database 'skyup' ready");
+    return db;
+  })().catch((error) => {
+    // Reset so the next request can retry — do NOT kill the process on serverless
+    connectPromise = null;
     console.error("❌ MongoDB connection failed:", error.message);
-    process.exit(1);
-  }
+    throw error;
+  });
+
+  return connectPromise;
 }
 
 function getDb() {
@@ -42,10 +51,8 @@ process.on("SIGINT", async () => {
   try {
     await client.close();
     console.log("\n✅ MongoDB connection closed");
+  } finally {
     process.exit(0);
-  } catch (err) {
-    console.error("❌ Error during shutdown:", err);
-    process.exit(1);
   }
 });
 
