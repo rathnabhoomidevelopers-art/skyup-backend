@@ -13,7 +13,7 @@ const blogRoutes = require("./routes/blogRoutes");
 const app = express();
 
 // ============================================
-// CORS
+// CORS  (must come before the redirect so 301s carry CORS headers)
 // ============================================
 const corsOptions = {
   origin: [
@@ -27,6 +27,7 @@ const corsOptions = {
   credentials: true,
   optionsSuccessStatus: 200,
 };
+app.use(cors(corsOptions));
 
 // ============================================
 // REMOVE TRAILING SLASHES
@@ -40,15 +41,26 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(cors(corsOptions));
 app.use(express.urlencoded({ limit: "10mb", extended: true }));
 app.use(express.json({ limit: "10mb" }));
 
 // ============================================
-// HEALTH CHECK
+// HEALTH CHECK  (no DB required — stays up even if Mongo is down)
 // ============================================
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
+});
+
+// ============================================
+// ENSURE DB CONNECTED (cold-start safe; cached connection is reused)
+// ============================================
+app.use(async (req, res, next) => {
+  try {
+    await connectToDatabase();
+    next();
+  } catch (err) {
+    res.status(503).json({ message: "Database temporarily unavailable" });
+  }
 });
 
 // ============================================
@@ -61,23 +73,25 @@ app.use("/", receiptRoutes);
 app.use("/", blogRoutes);
 
 // ============================================
-// START SERVER
+// START SERVER (local only — Vercel uses the exported app)
 // ============================================
 const PORT = process.env.PORT || 3500;
 const maskedUri = (process.env.MONGO_URI || "").replace(/:[^:@]+@/, ":****@");
 console.log("🔗 MongoDB URI:", maskedUri);
 
-connectToDatabase()
-  .then(() => {
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`📡 Ready to accept requests!`);
-      console.log(`🔐 JWT Authentication enabled\n`);
+if (require.main === module) {
+  connectToDatabase()
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`🚀 Server running on port ${PORT}`);
+        console.log(`📡 Ready to accept requests!`);
+        console.log(`🔐 JWT Authentication enabled\n`);
+      });
+    })
+    .catch((err) => {
+      console.error("❌ Failed to start server:", err);
+      process.exit(1);
     });
-  })
-  .catch((err) => {
-    console.error("❌ Failed to start server:", err);
-    process.exit(1);
-  });
+}
 
 module.exports = app;
