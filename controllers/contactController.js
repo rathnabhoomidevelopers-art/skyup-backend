@@ -5,25 +5,32 @@ const CRM_WEBHOOK_URL = process.env.CRM_WEBHOOK_URL;
 
 const addContact = async (req, res) => {
   try {
+    const { name, mobile } = req.body;
+    if (!name || !mobile) {
+      return res.status(400).json({ message: "Name and mobile are required" });
+    }
+
     const db = getDb();
     const contactDoc = buildContactDocument(req.body);
     await db.collection("contact").insertOne(contactDoc);
     console.log("✅ Contact submitted successfully");
 
-    const CRM_WEBHOOK_SECRET = process.env.CRM_WEBHOOK_SECRET 
-    fetch(CRM_WEBHOOK_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        webhook_secret: CRM_WEBHOOK_SECRET,
-        name: req.body.name || "Unknown",
-        mobile: String(req.body.mobile || ""),
-        email: req.body.email || "",
-        message: "[Contact Page] " + (req.body.message || req.body.subject || ""),
-      }),
-    })
-      .then((crmRes) => console.log("✅ Lead forwarded to CRM, status:", crmRes.status))
-      .catch((crmErr) => console.error("⚠️ CRM webhook error:", crmErr.message));
+    // Only attempt the CRM forward if a URL is configured
+    if (CRM_WEBHOOK_URL) {
+      fetch(CRM_WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          webhook_secret: process.env.CRM_WEBHOOK_SECRET,
+          name: req.body.name || "Unknown",
+          mobile: String(req.body.mobile || ""),
+          email: req.body.email || "",
+          message: "[Contact Page] " + (req.body.message || req.body.subject || ""),
+        }),
+      })
+        .then((crmRes) => console.log("✅ Lead forwarded to CRM, status:", crmRes.status))
+        .catch((crmErr) => console.error("⚠️ CRM webhook error:", crmErr.message));
+    }
 
     res.json({ message: "Submitted successfully" });
   } catch (err) {
